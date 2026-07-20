@@ -160,7 +160,6 @@ export function StudentDashboard() {
                     <p className="text-xs text-muted-foreground mt-1">
                       {course.instructor_name && `by ${course.instructor_name}`}
                     </p>
-                    <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{course.description}</p>
                   </div>
 
                   {/* Progress Bar */}
