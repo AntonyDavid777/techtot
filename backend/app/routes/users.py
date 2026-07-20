@@ -1,12 +1,57 @@
 from flask import Blueprint, request, g, current_app
 from app.utils.responses import success_response, error_response, paginated_response
-from app.utils.auth import require_auth, require_role, get_current_user
+from app.utils.auth import require_auth, require_role, get_current_user, hash_password
 from app.services.user_service import UserService
 from app.models.user import UserRole
-from app.utils.errors import ValidationError, NotFoundError
+from app.utils.errors import ValidationError, NotFoundError, ConflictError
 from bson import ObjectId
+from datetime import datetime
 
 bp = Blueprint('users', __name__, url_prefix='/users')
+
+
+@bp.route('/admin/create', methods=['POST'])
+@require_auth
+def admin_create_user():
+    """Create a new user (admin only)"""
+    try:
+        user_data = g.user_data
+        
+        # Check if current user is admin
+        if user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('Only admins can create users', 403)
+        
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['email', 'password', 'name', 'role']
+        if not data or not all(field in data for field in required_fields):
+            return error_response('Missing required fields: email, password, name, role', 400)
+        
+        # Validate role
+        valid_roles = [role.value for role in UserRole]
+        if data.get('role') not in valid_roles:
+            return error_response(f'Invalid role. Must be one of: {", ".join(valid_roles)}', 400)
+        
+        service = UserService(current_app.db)
+        user = service.create_user(
+            email=data.get('email'),
+            password=data.get('password'),
+            name=data.get('name'),
+            role=data.get('role')
+        )
+        
+        user_dict = user.to_dict()
+        user_dict['_id'] = str(user_dict['_id'])
+        
+        return success_response({'user': user_dict}, 'User created successfully', 201)
+    
+    except ConflictError as e:
+        return error_response(str(e), 409)
+    except ValidationError as e:
+        return error_response(str(e), 400)
+    except Exception as e:
+        return error_response(str(e), 500)
 
 
 @bp.route('', methods=['GET'])
@@ -146,6 +191,56 @@ def change_password(user_id):
     except (ValidationError, NotFoundError) as e:
         status_code = 400 if isinstance(e, ValidationError) else 404
         return error_response(str(e), status_code)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/<user_id>/reset-password', methods=['POST'])
+@require_auth
+def admin_reset_password(user_id):
+    """Reset user password (admin only)"""
+    try:
+        user_data = g.user_data
+        
+        # Check if current user is admin
+        if user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('Only admins can reset passwords', 403)
+        
+        data = request.get_json()
+        
+        if not data or 'new_password' not in data:
+            return error_response('Missing required field: new_password', 400)
+        
+        new_password = data.get('new_password')
+        
+        # Validate password strength
+        if len(new_password) < 8:
+            return error_response('Password must be at least 8 characters', 400)
+        
+        service = UserService(current_app.db)
+        
+        # Get the user first to verify it exists
+        user = service.get_user_by_id(user_id)
+        
+        # Hash and update password
+        new_hash = hash_password(new_password)
+        
+        current_app.db.users.update_one(
+            {'_id': ObjectId(user_id)},
+            {
+                '$set': {
+                    'password_hash': new_hash,
+                    'updated_at': datetime.utcnow()
+                }
+            }
+        )
+        
+        return success_response(None, 'Password reset successfully')
+    
+    except NotFoundError as e:
+        return error_response(str(e), 404)
+    except ValidationError as e:
+        return error_response(str(e), 400)
     except Exception as e:
         return error_response(str(e), 500)
 

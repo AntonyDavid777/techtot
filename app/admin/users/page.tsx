@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { User } from '@/types'
+import Link from 'next/link'
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([])
@@ -12,16 +13,19 @@ export default function AdminUsersPage() {
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
+  const [bulkActionLoading, setBulkActionLoading] = useState(false)
 
   useEffect(() => {
     loadUsers()
-  }, [page, search, roleFilter])
+  }, [page, search, roleFilter, statusFilter])
 
   const loadUsers = async () => {
     try {
       setLoading(true)
       setError(null)
-      const response = await apiClient.listUsers(page, 10, roleFilter || undefined, undefined, search || undefined) as any
+      const response = await apiClient.listUsers(page, 10, roleFilter || undefined, statusFilter !== 'all' ? statusFilter === 'active' : undefined, search || undefined) as any
       setUsers(response.data || [])
       setTotal(response.pagination?.total || 0)
     } catch (err: any) {
@@ -29,6 +33,58 @@ export default function AdminUsersPage() {
       console.error('[v0] Error loading users:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const toggleUserSelection = (userId: string) => {
+    const newSelected = new Set(selectedUsers)
+    if (newSelected.has(userId)) {
+      newSelected.delete(userId)
+    } else {
+      newSelected.add(userId)
+    }
+    setSelectedUsers(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedUsers.size === users.length && users.length > 0) {
+      setSelectedUsers(new Set())
+    } else {
+      setSelectedUsers(new Set(users.map(u => u._id)))
+    }
+  }
+
+  const handleBulkActivate = async () => {
+    try {
+      setBulkActionLoading(true)
+      const userIds = Array.from(selectedUsers)
+      for (const userId of userIds) {
+        await apiClient.updateUser(userId, { is_active: true })
+      }
+      setSelectedUsers(new Set())
+      loadUsers()
+    } catch (err: any) {
+      setError('Failed to activate users: ' + err.message)
+      console.error('[v0] Error activating users:', err)
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }
+
+  const handleBulkDeactivate = async () => {
+    try {
+      setBulkActionLoading(true)
+      const userIds = Array.from(selectedUsers)
+      for (const userId of userIds) {
+        await apiClient.updateUser(userId, { is_active: false })
+      }
+      setSelectedUsers(new Set())
+      loadUsers()
+    } catch (err: any) {
+      setError('Failed to deactivate users: ' + err.message)
+      console.error('[v0] Error deactivating users:', err)
+    } finally {
+      setBulkActionLoading(false)
     }
   }
 
@@ -64,9 +120,32 @@ export default function AdminUsersPage() {
         <p className="text-muted-foreground">Manage all users in the system</p>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedUsers.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+          <span className="font-medium text-blue-900">{selectedUsers.size} user(s) selected</span>
+          <div className="flex gap-2">
+            <button
+              onClick={handleBulkActivate}
+              disabled={bulkActionLoading}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {bulkActionLoading ? 'Processing...' : 'Activate'}
+            </button>
+            <button
+              onClick={handleBulkDeactivate}
+              disabled={bulkActionLoading}
+              className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {bulkActionLoading ? 'Processing...' : 'Deactivate'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="bg-card border border-border rounded-lg p-4 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium mb-2">Search</label>
             <input
@@ -96,6 +175,29 @@ export default function AdminUsersPage() {
               <option value="admin">Admin</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Status</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value)
+                setPage(1)
+              }}
+              className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <Link
+              href="/admin/users/create"
+              className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 text-center font-medium"
+            >
+              Create User
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -105,24 +207,40 @@ export default function AdminUsersPage() {
           <table className="w-full">
             <thead className="border-b border-border bg-muted">
               <tr>
+                <th className="px-6 py-3 text-left text-sm font-medium w-12">
+                  <input
+                    type="checkbox"
+                    checked={selectedUsers.size === users.length && users.length > 0}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4"
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-sm font-medium">Name</th>
                 <th className="px-6 py-3 text-left text-sm font-medium">Email</th>
                 <th className="px-6 py-3 text-left text-sm font-medium">Role</th>
                 <th className="px-6 py-3 text-left text-sm font-medium">Status</th>
                 <th className="px-6 py-3 text-left text-sm font-medium">Created</th>
-                <th className="px-6 py-3 text-left text-sm font-medium">Actions</th>
+                <th className="px-6 py-3 text-right text-sm font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
                     No users found
                   </td>
                 </tr>
               ) : (
                 users.map((user) => (
-                  <tr key={user._id} className="hover:bg-muted/50 transition-colors">
+                  <tr key={user._id} className={`hover:bg-muted/50 transition-colors ${selectedUsers.has(user._id) ? 'bg-blue-50' : ''}`}>
+                    <td className="px-6 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedUsers.has(user._id)}
+                        onChange={() => toggleUserSelection(user._id)}
+                        className="w-4 h-4"
+                      />
+                    </td>
                     <td className="px-6 py-4 text-sm font-medium">{user.name}</td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">{user.email}</td>
                     <td className="px-6 py-4 text-sm">
@@ -142,10 +260,10 @@ export default function AdminUsersPage() {
                     <td className="px-6 py-4 text-sm text-muted-foreground">
                       {new Date(user.created_at).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 text-sm">
-                      <button className="text-primary hover:text-primary/80 font-medium">
+                    <td className="px-6 py-4 text-sm text-right">
+                      <Link href={`/admin/users/${user._id}`} className="text-primary hover:text-primary/80 font-medium">
                         View
-                      </button>
+                      </Link>
                     </td>
                   </tr>
                 ))

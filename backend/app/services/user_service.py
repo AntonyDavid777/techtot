@@ -40,7 +40,8 @@ class UserService:
     def get_user_by_id(self, user_id):
         """Get user by ID"""
         try:
-            user_doc = self.users_collection.find_one({'_id': user_id})
+            # user_id is a string from JWT token, convert to ObjectId for query
+            user_doc = self.users_collection.find_one({'_id': ObjectId(user_id)})
             if not user_doc:
                 raise NotFoundError(f'User {user_id} not found')
             return User.from_mongo_dict(user_doc)
@@ -58,30 +59,12 @@ class UserService:
     
     def update_user(self, user_id, **kwargs):
         """Update user information"""
-<<<<<<< HEAD
-        # Ensure user_id is in the correct format (string, not ObjectId)
-        user_id_str = str(user_id) if not isinstance(user_id, str) else user_id
-        
-=======
-        print("========== USER SERVICE ==========")
-        print("Received user_id:", user_id)
-        print("user Id:", user_id)
-
-        existing = self.users_collection.find_one(
-            {"_id": user_id}
-        )
-        print("Existing user:", existing)
->>>>>>> 99a67112b7f9167d6adf8bca3d1e08d08fc35171
         allowed_fields = ['name', 'bio', 'profile_picture_url', 'role', 'is_active']
         update_data = {}
         
         for field in allowed_fields:
             if field in kwargs:
                 update_data[field] = kwargs[field]
-<<<<<<< HEAD
-=======
-        print("Update data:", update_data)
->>>>>>> 99a67112b7f9167d6adf8bca3d1e08d08fc35171
         
         if not update_data:
             raise ValidationError('No fields to update')
@@ -89,30 +72,9 @@ class UserService:
         update_data['updated_at'] = datetime.utcnow()
         
         result = self.users_collection.update_one(
-<<<<<<< HEAD
-            {'_id': user_id_str},
+            {'_id': ObjectId(user_id)},
             {'$set': update_data}
         )
-        
-        if result.matched_count == 0:
-            raise NotFoundError(f'User {user_id_str} not found')
-        
-        logger.info(f"User updated: {user_id_str}")
-        return self.get_user_by_id(user_id_str)
-    
-    def delete_user(self, user_id):
-        """Soft delete user (deactivate)"""
-        # Ensure user_id is a string (not ObjectId)
-        user_id_str = str(user_id) if not isinstance(user_id, str) else user_id
-        
-        result = self.users_collection.update_one(
-            {'_id': user_id_str},
-=======
-            {'_id': user_id},
-            {'$set': update_data}
-        )
-        print("matched_count:", result.matched_count)
-        print("modified_count:", result.modified_count)
         
         if result.matched_count == 0:
             raise NotFoundError(f'User {user_id} not found')
@@ -124,7 +86,6 @@ class UserService:
         """Soft delete user (deactivate)"""
         result = self.users_collection.update_one(
             {'_id': ObjectId(user_id)},
->>>>>>> 99a67112b7f9167d6adf8bca3d1e08d08fc35171
             {
                 '$set': {
                     'is_active': False,
@@ -134,11 +95,6 @@ class UserService:
         )
         
         if result.matched_count == 0:
-<<<<<<< HEAD
-            raise NotFoundError(f'User {user_id_str} not found')
-        
-        logger.info(f"User deactivated: {user_id_str}")
-=======
             raise NotFoundError(f'User {user_id} not found')
         
         logger.info(f"User deactivated: {user_id}")
@@ -183,22 +139,11 @@ class UserService:
     
     def get_user_courses(self, user_id):
         """Get all courses enrolled by a user"""
-<<<<<<< HEAD
-        # Ensure user_id is a string
-        user_id_str = str(user_id) if not isinstance(user_id, str) else user_id
-        
-        enrollments = self.db.enrollments.find(
-            {'user_id': user_id_str}
-        ).project({'course_id': 1})
-        
-        course_ids = [e['course_id'] if isinstance(e['course_id'], str) else str(e['course_id']) for e in enrollments]
-=======
         enrollments = self.db.enrollments.find(
             {'user_id': ObjectId(user_id)}
         ).project({'course_id': 1})
         
         course_ids = [ObjectId(e['course_id']) for e in enrollments]
->>>>>>> 99a67112b7f9167d6adf8bca3d1e08d08fc35171
         
         if not course_ids:
             return []
@@ -218,18 +163,9 @@ class UserService:
         from app.utils.auth import hash_password
         new_hash = hash_password(new_password)
         
-<<<<<<< HEAD
-        # Ensure user_id is a string
-        user_id_str = str(user_id) if not isinstance(user_id, str) else user_id
-        
-        # Update password
-        self.users_collection.update_one(
-            {'_id': user_id_str},
-=======
         # Update password
         self.users_collection.update_one(
             {'_id': ObjectId(user_id)},
->>>>>>> 99a67112b7f9167d6adf8bca3d1e08d08fc35171
             {
                 '$set': {
                     'password_hash': new_hash,
@@ -238,24 +174,12 @@ class UserService:
             }
         )
         
-<<<<<<< HEAD
-        logger.info(f"Password changed for user: {user_id_str}")
-    
-    def deactivate_user(self, user_id):
-        """Deactivate user account"""
-        # Ensure user_id is a string
-        user_id_str = str(user_id) if not isinstance(user_id, str) else user_id
-        
-        result = self.users_collection.update_one(
-            {'_id': user_id_str},
-=======
         logger.info(f"Password changed for user: {user_id}")
     
     def deactivate_user(self, user_id):
         """Deactivate user account"""
         result = self.users_collection.update_one(
             {'_id': ObjectId(user_id)},
->>>>>>> 99a67112b7f9167d6adf8bca3d1e08d08fc35171
             {
                 '$set': {
                     'is_active': False,
@@ -265,19 +189,6 @@ class UserService:
         )
         
         if result.matched_count == 0:
-<<<<<<< HEAD
-            raise NotFoundError(f'User {user_id_str} not found')
-        
-        logger.info(f"User deactivated: {user_id_str}")
-    
-    def activate_user(self, user_id):
-        """Reactivate user account"""
-        # Ensure user_id is a string
-        user_id_str = str(user_id) if not isinstance(user_id, str) else user_id
-        
-        result = self.users_collection.update_one(
-            {'_id': user_id_str},
-=======
             raise NotFoundError(f'User {user_id} not found')
         
         logger.info(f"User deactivated: {user_id}")
@@ -286,7 +197,6 @@ class UserService:
         """Reactivate user account"""
         result = self.users_collection.update_one(
             {'_id': ObjectId(user_id)},
->>>>>>> 99a67112b7f9167d6adf8bca3d1e08d08fc35171
             {
                 '$set': {
                     'is_active': True,
@@ -296,11 +206,6 @@ class UserService:
         )
         
         if result.matched_count == 0:
-<<<<<<< HEAD
-            raise NotFoundError(f'User {user_id_str} not found')
-        
-        logger.info(f"User reactivated: {user_id_str}")
-=======
             raise NotFoundError(f'User {user_id} not found')
         
         logger.info(f"User reactivated: {user_id}")
