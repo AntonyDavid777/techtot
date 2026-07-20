@@ -44,61 +44,100 @@ export default function AdminLayout({
           <p className="text-sm text-muted-foreground">System Management</p>
         </div>
         
-        <nav className="space-y-1 px-3">
-          <Link
-            href="/admin/dashboard"
-            className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/admin/users"
-            className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
-          >
-            Users
-          </Link>
-          <Link
-            href="/admin/courses"
-            className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
-          >
-            Courses
-          </Link>
-          <Link
-            href="/admin/reports"
-            className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
-          >
-            Reports
-          </Link>
-          <Link
-            href="/admin/settings"
-            className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
-          >
-            Settings
-          </Link>
-          <Link
-            href="/admin/permissions"
-            className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
-          >
-            Permissions
-          </Link>
-          <Link
-            href="/admin/maintenance"
-            className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
-          >
-            Maintenance
-          </Link>
-          <Link
-            href="/admin/reviews"
-            className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
-          >
-            Reviews
-          </Link>
-          <Link
-            href="/admin/banned"
-            className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
-          >
-            Banned Users
-          </Link>
+        <nav className="space-y-6 px-3">
+          {/* Main Navigation */}
+          <div className="space-y-1">
+            <Link
+              href="/admin/dashboard"
+              className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/admin/users"
+              className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Users
+            </Link>
+            <Link
+              href="/admin/courses"
+              className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Courses
+            </Link>
+          </div>
+
+          {/* Academic Management Section */}
+          <div className="border-t border-border pt-4">
+            <p className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Academic Management
+            </p>
+            <div className="space-y-1">
+              <Link
+                href="/admin/academic/overview"
+                className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Overview
+              </Link>
+              <Link
+                href="/admin/academic/teacher-assignment"
+                className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Teacher Assignment
+              </Link>
+              <Link
+                href="/admin/academic/enrollment"
+                className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Student Enrollment
+              </Link>
+            </div>
+          </div>
+
+          {/* System Management Section */}
+          <div className="border-t border-border pt-4">
+            <p className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              System Management
+            </p>
+            <div className="space-y-1">
+              <Link
+                href="/admin/reports"
+                className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Reports
+              </Link>
+              <Link
+                href="/admin/settings"
+                className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Settings
+              </Link>
+              <Link
+                href="/admin/permissions"
+                className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Permissions
+              </Link>
+              <Link
+                href="/admin/maintenance"
+                className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Maintenance
+              </Link>
+              <Link
+                href="/admin/reviews"
+                className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Reviews
+              </Link>
+              <Link
+                href="/admin/banned"
+                className="block px-4 py-2 rounded text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Banned Users
+              </Link>
+            </div>
+          </div>
         </nav>
       </aside>
 

@@ -282,6 +282,38 @@ class ApiClient {
     return this.post(`/courses/${courseId}/restore`, {})
   }
 
+  // Academic Management
+  async enrollStudent(courseId: string, studentId: string) {
+    return this.post(`/courses/academic/enrollment/${courseId}`, { student_id: studentId })
+  }
+
+  async unenrollStudent(courseId: string, studentId: string) {
+    return this.post(`/courses/academic/unenrollment/${courseId}`, { student_id: studentId })
+  }
+
+  async getCourseStudents(courseId: string, page = 1, pageSize = 10) {
+    return this.get(`/courses/academic/students/${courseId}?page=${page}&page_size=${pageSize}`)
+  }
+
+  async getCourseEnrolledStudents(courseId: string, page = 1, pageSize = 10) {
+    return this.get(`/courses/${courseId}/enrolled-students-details?page=${page}&page_size=${pageSize}`)
+  }
+
+  async getTeacherCourses(teacherId: string, page = 1, pageSize = 10) {
+    return this.get(`/courses/academic/teacher-courses/${teacherId}?page=${page}&page_size=${pageSize}`)
+  }
+
+  async getStudentCourses(studentId: string) {
+    return this.get(`/users/${studentId}/courses`)
+  }
+
+  async assignTeacher(courseId: string, teacherId: string) {
+    return this.post(`/courses/academic/teacher-assignment/${courseId}`, { teacher_id: teacherId })
+  }
+
+  async removeTeacher(courseId: string) {
+    return this.post(`/courses/academic/remove-teacher/${courseId}`, {})
+
   // Health check
   async healthCheck() {
     return this.get('/health', { includeAuth: false })

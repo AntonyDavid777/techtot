@@ -659,3 +659,183 @@ def list_admin_courses():
     
     except Exception as e:
         return error_response(str(e), 500)
+
+
+# Academic Management Endpoints
+@bp.route('/academic/teacher-assignment/<course_id>', methods=['POST'])
+@require_auth
+def assign_teacher_to_course(course_id):
+    """Assign a teacher to a course (admin only)"""
+    try:
+        user_data = g.user_data
+        if user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('Only admins can assign teachers', 403)
+        
+        data = request.get_json()
+        if not data or 'teacher_id' not in data:
+            return error_response('Missing required field: teacher_id', 400)
+        
+        teacher_id = data.get('teacher_id')
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        updated_course = service.update_course(course_id, instructor_id=teacher_id)
+        course_data = updated_course.to_dict()
+        course_data['_id'] = str(course_data['_id'])
+        course_data['instructor_id'] = str(course_data['instructor_id'])
+        
+        return success_response({'course': course_data}, 'Teacher assigned successfully')
+    
+    except NotFoundError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/academic/remove-teacher/<course_id>', methods=['POST'])
+@require_auth
+def remove_teacher_from_course(course_id):
+    """Remove teacher assignment from a course (admin only)"""
+    try:
+        user_data = g.user_data
+        if user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('Only admins can remove teachers', 403)
+        
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        updated_course = service.update_course(course_id, instructor_id=None)
+        course_data = updated_course.to_dict()
+        course_data['_id'] = str(course_data['_id'])
+        
+        return success_response({'course': course_data}, 'Teacher removed successfully')
+    
+    except NotFoundError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/academic/enrollment/<course_id>', methods=['POST'])
+@require_auth
+def enroll_student(course_id):
+    """Enroll a single student in a course"""
+    try:
+        user_data = g.user_data
+        data = request.get_json()
+        
+        if not data or 'student_id' not in data:
+            return error_response('Missing required field: student_id', 400)
+        
+        student_id = data.get('student_id')
+        
+        # Check authorization
+        if user_data.get('role') not in [UserRole.ADMIN.value, UserRole.TEACHER.value]:
+            return error_response('Only admins and teachers can enroll students', 403)
+        
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        # Check for existing enrollment
+        existing = current_app.db.enrollments.find_one({
+            'user_id': ObjectId(student_id),
+            'course_id': ObjectId(course_id)
+        })
+        
+        if existing:
+            return error_response('Student is already enrolled in this course', 409)
+        
+        enrollments, _ = service.bulk_enroll_students(course_id, [student_id])
+        
+        enrollment_data = enrollments[0].to_dict() if enrollments else {}
+        enrollment_data['_id'] = str(enrollment_data.get('_id', ''))
+        
+        return success_response({'enrollment': enrollment_data}, 'Student enrolled successfully', 201)
+    
+    except ConflictError as e:
+        return error_response(str(e), 409)
+    except NotFoundError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/academic/unenrollment/<course_id>', methods=['POST'])
+@require_auth
+def unenroll_student(course_id):
+    """Remove a student from a course"""
+    try:
+        user_data = g.user_data
+        data = request.get_json()
+        
+        if not data or 'student_id' not in data:
+            return error_response('Missing required field: student_id', 400)
+        
+        student_id = data.get('student_id')
+        
+        # Check authorization
+        if user_data.get('role') not in [UserRole.ADMIN.value, UserRole.TEACHER.value]:
+            return error_response('Only admins and teachers can unenroll students', 403)
+        
+        service = CourseService(current_app.db)
+        count = service.bulk_unenroll_students(course_id, [student_id])
+        
+        return success_response({'unenrolled_count': count}, 'Student unenrolled successfully')
+    
+    except NotFoundError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/academic/students/<course_id>', methods=['GET'])
+@require_auth
+def get_course_students(course_id):
+    """Get all students enrolled in a course with details"""
+    try:
+        user_id = get_current_user()
+        user_data = g.user_data
+        page = request.args.get('page', 1, type=int)
+        page_size = request.args.get('page_size', 10, type=int)
+        
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        # Check authorization (teacher of course or admin)
+        if user_id != str(course.instructor_id) and user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('You do not have permission to view this', 403)
+        
+        results, total = service.get_enrolled_students_with_details(course_id, page, page_size)
+        
+        return paginated_response(results, total, page, page_size, 'Course students retrieved successfully')
+    
+    except NotFoundError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/academic/teacher-courses/<teacher_id>', methods=['GET'])
+@require_auth
+def get_teacher_courses_academic(teacher_id):
+    """Get all courses taught by a teacher"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        page_size = request.args.get('page_size', 10, type=int)
+        
+        service = CourseService(current_app.db)
+        courses, total = service.get_teacher_courses(teacher_id, page, page_size)
+        
+        courses_data = []
+        for course in courses:
+            data = course.to_dict(include_lesson_ids=True)
+            data['_id'] = str(data['_id'])
+            data['instructor_id'] = str(data['instructor_id'])
+            if 'lesson_ids' in data:
+                data['lesson_ids'] = [str(lid) for lid in data['lesson_ids']]
+            courses_data.append(data)
+        
+        return paginated_response(courses_data, total, page, page_size, 'Teacher courses retrieved successfully')
+    
+    except Exception as e:
+        return error_response(str(e), 500)
