@@ -3,6 +3,7 @@
 import { useAuth } from '@/contexts/auth-context'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { apiClient } from '@/lib/api-client'
 
 interface CourseProgress {
   id: string
@@ -11,6 +12,8 @@ interface CourseProgress {
   completed_lessons: number
   overall_progress: number
   last_accessed: string
+  title?: string
+  instructor_name?: string
 }
 
 interface StudentStats {
@@ -38,29 +41,50 @@ export function StudentDashboard() {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        // Fetch courses progress
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-        const response = await fetch(`${apiUrl}/api/v1/progress/courses`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-          },
-        })
-        if (response.ok) {
-          const data = await response.json()
-          setCoursesProgress(data.data || [])
-
-          // Calculate stats from courses
-          const total = data.data?.length || 0
-          const inProgress = data.data?.filter((c: any) => c.overall_progress < 100).length || 0
-          const completed = data.data?.filter((c: any) => c.overall_progress === 100).length || 0
-
-          setStats((prev) => ({
-            ...prev,
-            total_courses: total,
-            courses_in_progress: inProgress,
-            courses_completed: completed,
-          }))
+        if (!user?._id) {
+          setLoading(false)
+          return
         }
+
+        // Fetch user's enrolled courses
+        const response = await apiClient.getUserCourses(user._id) as any
+        const enrollments = response?.data || []
+
+        // Get course details for each enrollment
+        const coursesWithDetails = await Promise.all(
+          enrollments.map(async (enrollment: any) => {
+            try {
+              const courseResponse = await apiClient.getCourse(enrollment.course_id) as any
+              return {
+                id: enrollment._id,
+                course_id: enrollment.course_id,
+                overall_progress: enrollment.progress_percentage || 0,
+                last_accessed: enrollment.enrolled_at,
+                title: courseResponse?.data?.title,
+                instructor_name: courseResponse?.data?.instructor_name,
+                lessons: courseResponse?.data?.lesson_ids?.length || 0,
+                description: courseResponse?.data?.description,
+              }
+            } catch (err) {
+              return null
+            }
+          })
+        )
+
+        const validCourses = coursesWithDetails.filter(c => c !== null)
+        setCoursesProgress(validCourses)
+
+        // Calculate stats
+        const total = validCourses.length
+        const inProgress = validCourses.filter((c: any) => c.overall_progress < 100).length
+        const completed = validCourses.filter((c: any) => c.overall_progress === 100).length
+
+        setStats((prev) => ({
+          ...prev,
+          total_courses: total,
+          courses_in_progress: inProgress,
+          courses_completed: completed,
+        }))
       } catch (error) {
         console.error('[v0] Failed to load dashboard data:', error)
       } finally {
@@ -132,9 +156,9 @@ export function StudentDashboard() {
               <div key={course.id} className="bg-card rounded-lg border border-border overflow-hidden hover:shadow-lg transition-shadow">
                 <div className="p-6 space-y-4">
                   <div>
-                    <h3 className="font-semibold line-clamp-2">Course {course.course_id.slice(0, 8)}</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {course.completed_lessons} of {course.total_lessons} lessons completed
+                    <h3 className="font-semibold line-clamp-2">{course.title || 'Course'}</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {course.instructor_name && `by ${course.instructor_name}`}
                     </p>
                   </div>
 

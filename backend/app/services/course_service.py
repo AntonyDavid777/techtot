@@ -46,56 +46,26 @@ class CourseService:
         logger.info(f"Course created: {course._id} by instructor {instructor_id}")
         return course
 
-#    def get_course_by_id(self, course_id: str, include_lessons: bool = False):
-        """Get course by ID"""
- #       try:
-  #          course_doc = self.courses_collection.find_one({'_id': ObjectId(course_id)})
-   #         if not course_doc:
-    #            raise NotFoundError(f'Course {course_id} not found')
-     #       
-      #      course = Course.from_mongo_dict(course_doc)
-       #     
-        #    if include_lessons:
-         #       lessons_docs = self.lessons_collection.find(
-          #          {'course_id': ObjectId(course_id)}
-           #     ).sort('order', 1)
-            #    course.lessons = [Lesson.from_mongo_dict(doc) for doc in lessons_docs]
-            #
-            #return course
-        #except Exception as e:
-         #   if isinstance(e, NotFoundError):
-          #      raise
-           # raise ValueError(f'Invalid course ID: {course_id}')
-
-
     def get_course_by_id(self, course_id: str, include_lessons: bool = False):
-             """Get course by ID"""
-
-             print("Searching for course:", course_id)
-             print("ObjectId:", ObjectId(course_id))
-
-             course_doc = self.courses_collection.find_one({
-                  "_id": ObjectId(course_id)
-             })
-
-             print("Mongo result:", course_doc)
-
-             if not course_doc:
-                raise NotFoundError(f"Course {course_id} not found")
-
-             course = Course.from_mongo_dict(course_doc)
-
-             if include_lessons:
+        """Get course by ID"""
+        try:
+            course_doc = self.courses_collection.find_one({'_id': ObjectId(course_id)})
+            if not course_doc:
+                raise NotFoundError(f'Course {course_id} not found')
+            
+            course = Course.from_mongo_dict(course_doc)
+            
+            if include_lessons:
                 lessons_docs = self.lessons_collection.find(
-                    {"course_id": ObjectId(course_id)}
-                 ).sort("order", 1)
-
-                course.lessons = [
-                     Lesson.from_mongo_dict(doc)
-                     for doc in lessons_docs
-                ]
-
-             return course
+                    {'course_id': ObjectId(course_id)}
+                ).sort('order', 1)
+                course.lessons = [Lesson.from_mongo_dict(doc) for doc in lessons_docs]
+            
+            return course
+        except Exception as e:
+            if isinstance(e, NotFoundError):
+                raise
+            raise ValueError(f'Invalid course ID: {course_id}')
     def update_course(self, course_id: str, **kwargs):
         """Update course information"""
         allowed_fields = ['title', 'description', 'category', 'level', 'status', 'thumbnail_url']
@@ -367,3 +337,108 @@ class CourseService:
         enrollments = [Enrollment.from_mongo_dict(doc) for doc in enrollments_docs]
         
         return enrollments, total
+    
+    def bulk_enroll_students(self, course_id: str, user_ids: list):
+        """Enroll multiple students in a course"""
+        if not user_ids:
+            raise ValidationError('No user IDs provided')
+        
+        enrollments = []
+        errors = []
+        
+        for user_id in user_ids:
+            try:
+                # Check if already enrolled
+                existing = self.enrollments_collection.find_one({
+                    'user_id': ObjectId(user_id),
+                    'course_id': ObjectId(course_id)
+                })
+                
+                if existing:
+                    errors.append(f'User {user_id} already enrolled')
+                    continue
+                
+                enrollment = Enrollment(
+                    user_id=user_id,
+                    course_id=course_id
+                )
+                
+                result = self.enrollments_collection.insert_one(enrollment.to_dict())
+                enrollment._id = result.inserted_id
+                enrollments.append(enrollment)
+                
+            except Exception as e:
+                errors.append(f'Error enrolling user {user_id}: {str(e)}')
+        
+        # Increment enrollment count in course
+        if enrollments:
+            self.courses_collection.update_one(
+                {'_id': ObjectId(course_id)},
+                {'$inc': {'enrollment_count': len(enrollments)}}
+            )
+            logger.info(f"Bulk enrollment: {len(enrollments)} students enrolled in course {course_id}")
+        
+        return enrollments, errors
+    
+    def bulk_unenroll_students(self, course_id: str, user_ids: list):
+        """Unenroll multiple students from a course"""
+        if not user_ids:
+            raise ValidationError('No user IDs provided')
+        
+        # Build query to delete multiple enrollments
+        query = {
+            'course_id': ObjectId(course_id),
+            'user_id': {'$in': [ObjectId(uid) for uid in user_ids]}
+        }
+        
+        result = self.enrollments_collection.delete_many(query)
+        
+        # Decrement enrollment count in course
+        if result.deleted_count > 0:
+            self.courses_collection.update_one(
+                {'_id': ObjectId(course_id)},
+                {'$inc': {'enrollment_count': -result.deleted_count}}
+            )
+            logger.info(f"Bulk unenrollment: {result.deleted_count} students unenrolled from course {course_id}")
+        
+        return result.deleted_count
+    
+    def get_teacher_courses(self, teacher_id: str, page: int = 1, page_size: int = 10):
+        """Get all courses taught by a teacher"""
+        query = {'instructor_id': ObjectId(teacher_id)}
+        
+        total = self.courses_collection.count_documents(query)
+        
+        skip = (page - 1) * page_size
+        courses_docs = self.courses_collection.find(query).skip(skip).limit(page_size).sort('created_at', -1)
+        
+        courses = [Course.from_mongo_dict(doc) for doc in courses_docs]
+        
+        return courses, total
+    
+    def get_enrolled_students_with_details(self, course_id: str, page: int = 1, page_size: int = 10):
+        """Get students enrolled in a course with user details"""
+        query = {'course_id': ObjectId(course_id)}
+        
+        total = self.enrollments_collection.count_documents(query)
+        
+        skip = (page - 1) * page_size
+        enrollments_docs = self.enrollments_collection.find(query).skip(skip).limit(page_size).sort('enrolled_at', -1)
+        
+        results = []
+        for enroll_doc in enrollments_docs:
+            enrollment = Enrollment.from_mongo_dict(enroll_doc)
+            # Get user details
+            user_doc = self.db.users.find_one({'_id': ObjectId(enrollment.user_id)})
+            if user_doc:
+                user_dict = {
+                    '_id': str(user_doc['_id']),
+                    'name': user_doc.get('name', ''),
+                    'email': user_doc.get('email', ''),
+                }
+                results.append({
+                    'enrollment': enrollment.to_dict(),
+                    'user': user_dict
+                })
+        
+        return results, total

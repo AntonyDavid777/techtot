@@ -242,6 +242,26 @@ class ApiClient {
     return this.get(`/courses?instructor_id=${instructorId}&page=${page}&page_size=${pageSize}`)
   }
 
+  async bulkEnrollStudents(courseId: string, userIds: string[]) {
+    return this.post(`/courses/${courseId}/bulk-enroll`, { user_ids: userIds })
+  }
+
+  async bulkUnenrollStudents(courseId: string, userIds: string[]) {
+    return this.post(`/courses/${courseId}/bulk-unenroll`, { user_ids: userIds })
+  }
+
+  async getTeacherCourses(teacherId: string, page = 1, pageSize = 10) {
+    return this.get(`/courses/teacher/${teacherId}/courses?page=${page}&page_size=${pageSize}`)
+  }
+
+  async getEnrolledStudentsDetails(courseId: string, page = 1, pageSize = 10) {
+    return this.get(`/courses/${courseId}/enrolled-students-details?page=${page}&page_size=${pageSize}`)
+  }
+
+  async getCourseLessons(courseId: string) {
+    return this.get(`/courses/${courseId}/lessons`)
+  }
+
   // Health check
   async healthCheck() {
     return this.get('/health', { includeAuth: false })

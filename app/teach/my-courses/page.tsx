@@ -13,6 +13,9 @@ export default function MyCoursesPage() {
   const [courses, setCourses] = useState<any[]>([])
   const [isLoadingCourses, setIsLoadingCourses] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
+  const [enrolledStudents, setEnrolledStudents] = useState<any[]>([])
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false)
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -42,6 +45,23 @@ export default function MyCoursesPage() {
     } finally {
       setIsLoadingCourses(false)
     }
+  }
+
+  const loadEnrolledStudents = async (courseId: string) => {
+    setIsLoadingStudents(true)
+    try {
+      const response = await apiClient.getEnrolledStudentsDetails(courseId, 1, 100) as any
+      setEnrolledStudents(response?.data || [])
+    } catch (err: any) {
+      console.error('[v0] Error loading students:', err)
+    } finally {
+      setIsLoadingStudents(false)
+    }
+  }
+
+  const handleViewStudents = async (courseId: string) => {
+    setSelectedCourseId(courseId)
+    await loadEnrolledStudents(courseId)
   }
 
   if (isLoading) {
@@ -101,6 +121,55 @@ export default function MyCoursesPage() {
         </div>
       </nav>
 
+      {/* Enrolled Students Modal */}
+      {selectedCourseId && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-border px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold">Enrolled Students</h2>
+              <button
+                onClick={() => {
+                  setSelectedCourseId(null)
+                  setEnrolledStudents([])
+                }}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="px-6 py-4">
+              {isLoadingStudents ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-border border-t-primary" />
+                </div>
+              ) : enrolledStudents.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No students enrolled yet</p>
+              ) : (
+                <div className="space-y-3">
+                  {enrolledStudents.map((item: any) => (
+                    <div key={item.enrollment?._id} className="border border-border rounded-lg p-4 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{item.user?.name}</p>
+                        <p className="text-sm text-muted-foreground">{item.user?.email}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm">
+                          <span className="font-medium">{item.enrollment?.progress_percentage || 0}%</span> complete
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Enrolled {new Date(item.enrollment?.enrolled_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <div className="px-6 py-8">
         <div className="mx-auto max-w-6xl">
@@ -149,6 +218,12 @@ export default function MyCoursesPage() {
                     <span className="text-muted-foreground">{course.lessons_count || 0} lessons</span>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => handleViewStudents(course._id)}
+                      className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                    >
+                      Students
+                    </button>
                     <Link
                       href={`/teach/courses/${course._id}`}
                       className="flex-1 rounded-lg bg-primary px-3 py-2 text-center text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
