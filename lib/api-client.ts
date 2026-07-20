@@ -313,6 +313,7 @@ class ApiClient {
 
   async removeTeacher(courseId: string) {
     return this.post(`/courses/academic/remove-teacher/${courseId}`, {})
+  }
 
   // Health check
   async healthCheck() {
