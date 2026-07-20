@@ -262,6 +262,26 @@ class ApiClient {
     return this.get(`/courses/${courseId}/lessons`)
   }
 
+  async deleteCourse(courseId: string) {
+    return this.delete(`/courses/${courseId}`)
+  }
+
+  async publishCourse(courseId: string) {
+    return this.post(`/courses/${courseId}/publish`, {})
+  }
+
+  async archiveCourse(courseId: string) {
+    return this.post(`/courses/${courseId}/archive`, {})
+  }
+
+  async softDeleteCourse(courseId: string) {
+    return this.delete(`/courses/${courseId}/soft-delete`)
+  }
+
+  async restoreCourse(courseId: string) {
+    return this.post(`/courses/${courseId}/restore`, {})
+  }
+
   // Health check
   async healthCheck() {
     return this.get('/health', { includeAuth: false })

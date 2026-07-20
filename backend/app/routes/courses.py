@@ -8,6 +8,7 @@ from bson import ObjectId
 import logging
 from flask import request
 import json
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -489,5 +490,172 @@ def get_enrolled_students_details(course_id):
     
     except NotFoundError as e:
         return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/<course_id>/publish', methods=['POST'])
+@require_auth
+def publish_course(course_id):
+    """Publish a course (change from draft to published)"""
+    try:
+        user_id = get_current_user()
+        user_data = g.user_data
+        
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        # Check authorization
+        if user_id != str(course.instructor_id) and user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('You do not have permission to publish this course', 403)
+        
+        if course.status == 'published':
+            return error_response('Course is already published', 400)
+        
+        updated_course = service.update_course(course_id, status='published')
+        course_data = updated_course.to_dict()
+        course_data['_id'] = str(course_data['_id'])
+        course_data['instructor_id'] = str(course_data['instructor_id'])
+        
+        return success_response({'course': course_data}, 'Course published successfully')
+    
+    except NotFoundError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/<course_id>/archive', methods=['POST'])
+@require_auth
+def archive_course(course_id):
+    """Archive a course (change status to archived)"""
+    try:
+        user_id = get_current_user()
+        user_data = g.user_data
+        
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        # Check authorization
+        if user_id != str(course.instructor_id) and user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('You do not have permission to archive this course', 403)
+        
+        if course.status == 'archived':
+            return error_response('Course is already archived', 400)
+        
+        updated_course = service.update_course(course_id, status='archived')
+        course_data = updated_course.to_dict()
+        course_data['_id'] = str(course_data['_id'])
+        course_data['instructor_id'] = str(course_data['instructor_id'])
+        
+        return success_response({'course': course_data}, 'Course archived successfully')
+    
+    except NotFoundError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/<course_id>/soft-delete', methods=['DELETE'])
+@require_auth
+def soft_delete_course(course_id):
+    """Soft delete a course (mark as deleted without removing data)"""
+    try:
+        user_id = get_current_user()
+        user_data = g.user_data
+        
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        # Check authorization
+        if user_id != str(course.instructor_id) and user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('You do not have permission to delete this course', 403)
+        
+        # Check if already deleted
+        if hasattr(course, 'is_deleted') and course.is_deleted:
+            return error_response('Course is already deleted', 400)
+        
+        updated_course = service.update_course(course_id, is_deleted=True, deleted_at=datetime.utcnow())
+        course_data = updated_course.to_dict()
+        course_data['_id'] = str(course_data['_id'])
+        course_data['instructor_id'] = str(course_data['instructor_id'])
+        
+        return success_response({'course': course_data}, 'Course soft deleted successfully')
+    
+    except NotFoundError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/<course_id>/restore', methods=['POST'])
+@require_auth
+def restore_course(course_id):
+    """Restore a soft-deleted course"""
+    try:
+        user_id = get_current_user()
+        user_data = g.user_data
+        
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        # Check authorization
+        if user_id != str(course.instructor_id) and user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('You do not have permission to restore this course', 403)
+        
+        # Check if deleted
+        if not (hasattr(course, 'is_deleted') and course.is_deleted):
+            return error_response('Course is not deleted', 400)
+        
+        updated_course = service.update_course(course_id, is_deleted=False, deleted_at=None)
+        course_data = updated_course.to_dict()
+        course_data['_id'] = str(course_data['_id'])
+        course_data['instructor_id'] = str(course_data['instructor_id'])
+        
+        return success_response({'course': course_data}, 'Course restored successfully')
+    
+    except NotFoundError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('', methods=['GET'])
+@require_auth
+def list_admin_courses():
+    """List all courses (for admin - including draft and archived)"""
+    try:
+        user_data = g.user_data
+        
+        # Only admins and teachers can see all courses
+        if user_data.get('role') not in [UserRole.ADMIN.value, UserRole.TEACHER.value]:
+            return error_response('Only admins and teachers can access this endpoint', 403)
+        
+        page = request.args.get('page', 1, type=int)
+        page_size = request.args.get('page_size', 10, type=int)
+        status = request.args.get('status')
+        search = request.args.get('search')
+        
+        service = CourseService(current_app.db)
+        
+        filters = {}
+        if status:
+            filters['status'] = status
+        if search:
+            filters['search'] = search
+        
+        courses, total = service.list_courses(page, page_size, filters, status=None)
+        
+        courses_data = []
+        for course in courses:
+            data = course.to_dict(include_lesson_ids=True)
+            data['_id'] = str(data['_id'])
+            data['instructor_id'] = str(data['instructor_id'])
+            if 'lesson_ids' in data:
+                data['lesson_ids'] = [str(lid) for lid in data['lesson_ids']]
+            courses_data.append(data)
+        
+        return paginated_response(courses_data, total, page, page_size, 'All courses retrieved successfully')
+    
     except Exception as e:
         return error_response(str(e), 500)

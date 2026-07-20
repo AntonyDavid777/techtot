@@ -1,18 +1,26 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
 import { Course, User } from '@/types'
+import CourseTable from '@/app/components/CourseTable'
+import Link from 'next/link'
 
 export default function AdminCoursesPage() {
+  const router = useRouter()
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [levelFilter, setLevelFilter] = useState<string>('')
   const [teachers, setTeachers] = useState<User[]>([])
+  const [selectedCourses, setSelectedCourses] = useState<Set<string>>(new Set())
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('')
   const [isAssigningTeacher, setIsAssigningTeacher] = useState(false)
@@ -20,7 +28,7 @@ export default function AdminCoursesPage() {
   useEffect(() => {
     loadCourses()
     loadTeachers()
-  }, [page, search, statusFilter])
+  }, [page, search, statusFilter, levelFilter])
 
   const loadCourses = async () => {
     try {
@@ -28,6 +36,7 @@ export default function AdminCoursesPage() {
       setError(null)
       const filters: Record<string, any> = {}
       if (statusFilter) filters.status = statusFilter
+      if (levelFilter) filters.level = levelFilter
       if (search) filters.search = search
       
       const response = await apiClient.listCourses(page, 10, filters) as any
@@ -50,6 +59,62 @@ export default function AdminCoursesPage() {
     }
   }
 
+  const toggleCourseSelection = (courseId: string) => {
+    const newSelected = new Set(selectedCourses)
+    if (newSelected.has(courseId)) {
+      newSelected.delete(courseId)
+    } else {
+      newSelected.add(courseId)
+    }
+    setSelectedCourses(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedCourses.size === courses.length && courses.length > 0) {
+      setSelectedCourses(new Set())
+    } else {
+      setSelectedCourses(new Set(courses.map(c => c._id)))
+    }
+  }
+
+  const handleBulkPublish = async () => {
+    try {
+      setActionLoading(true)
+      const courseIds = Array.from(selectedCourses)
+      for (const courseId of courseIds) {
+        await apiClient.publishCourse(courseId)
+      }
+      setSuccess(`Published ${courseIds.length} course(s)`)
+      setSelectedCourses(new Set())
+      loadCourses()
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err: any) {
+      setError('Failed to publish courses: ' + err.message)
+      console.error('[v0] Error publishing courses:', err)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleBulkArchive = async () => {
+    try {
+      setActionLoading(true)
+      const courseIds = Array.from(selectedCourses)
+      for (const courseId of courseIds) {
+        await apiClient.archiveCourse(courseId)
+      }
+      setSuccess(`Archived ${courseIds.length} course(s)`)
+      setSelectedCourses(new Set())
+      loadCourses()
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err: any) {
+      setError('Failed to archive courses: ' + err.message)
+      console.error('[v0] Error archiving courses:', err)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   const handleAssignTeacher = async () => {
     if (!selectedCourseId || !selectedTeacherId) return
     
@@ -58,11 +123,31 @@ export default function AdminCoursesPage() {
       await apiClient.updateCourse(selectedCourseId, { instructor_id: selectedTeacherId })
       setSelectedCourseId(null)
       setSelectedTeacherId('')
+      setSuccess('Teacher assigned successfully')
       loadCourses()
+      setTimeout(() => setSuccess(null), 3000)
     } catch (err: any) {
+      setError('Failed to assign teacher: ' + err.message)
       console.error('[v0] Error assigning teacher:', err)
     } finally {
       setIsAssigningTeacher(false)
+    }
+  }
+
+  const handleDeleteCourse = async (courseId: string) => {
+    if (!confirm('Are you sure you want to delete this course?')) return
+    
+    try {
+      setActionLoading(true)
+      await apiClient.deleteCourse(courseId)
+      setSuccess('Course deleted successfully')
+      loadCourses()
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err: any) {
+      setError('Failed to delete course: ' + err.message)
+      console.error('[v0] Error deleting course:', err)
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -93,15 +178,61 @@ export default function AdminCoursesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Course Management</h1>
-        <p className="text-muted-foreground">Manage all courses in the system</p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Course Management</h1>
+          <p className="text-muted-foreground">Manage all courses in the system</p>
+        </div>
+        <Link
+          href="/admin/courses/create"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-medium"
+        >
+          Create Course
+        </Link>
       </div>
+
+      {/* Bulk Actions Bar */}
+      {selectedCourses.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+          <span className="font-medium text-blue-900">{selectedCourses.size} course(s) selected</span>
+          <div className="flex gap-2">
+            <button
+              onClick={handleBulkPublish}
+              disabled={actionLoading}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {actionLoading ? 'Processing...' : 'Publish'}
+            </button>
+            <button
+              onClick={handleBulkArchive}
+              disabled={actionLoading}
+              className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {actionLoading ? 'Processing...' : 'Archive'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {success && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-green-800">
+          {success}
+        </div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+          {error}
+        </div>
+      )}
 
       {/* Teacher Assignment Modal */}
       {selectedCourseId && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4 space-y-4">
+          <div className="bg-card rounded-lg p-6 max-w-sm w-full mx-4 space-y-4">
             <h2 className="text-xl font-bold">Assign Teacher</h2>
             <select
               value={selectedTeacherId}
@@ -136,12 +267,12 @@ export default function AdminCoursesPage() {
 
       {/* Filters */}
       <div className="bg-card border border-border rounded-lg p-4 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium mb-2">Search</label>
             <input
               type="text"
-              placeholder="Search by title or instructor..."
+              placeholder="Search by title..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value)
@@ -166,60 +297,42 @@ export default function AdminCoursesPage() {
               <option value="archived">Archived</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Level</label>
+            <select
+              value={levelFilter}
+              onChange={(e) => {
+                setLevelFilter(e.target.value)
+                setPage(1)
+              }}
+              className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">All Levels</option>
+              <option value="beginner">Beginner</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="advanced">Advanced</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Courses Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {courses.length === 0 ? (
-          <div className="col-span-full text-center py-12">
-            <p className="text-muted-foreground">No courses found</p>
+      {/* Courses Table */}
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        {loading ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Loading courses...</p>
           </div>
         ) : (
-          courses.map((course) => (
-            <div key={course._id} className="bg-card border border-border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-              <div className="bg-gradient-to-r from-primary/10 to-primary/5 h-32 flex items-center justify-center">
-                {course.thumbnail_url ? (
-                  <img
-                    src={course.thumbnail_url}
-                    alt={course.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="text-primary text-4xl">📚</div>
-                )}
-              </div>
-              <div className="p-4 space-y-3">
-                <div>
-                  <h3 className="font-semibold text-lg line-clamp-2">{course.title}</h3>
-                  <p className="text-sm text-muted-foreground line-clamp-2">{course.description}</p>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    course.status === 'published'
-                      ? 'bg-green-100 text-green-800'
-                      : course.status === 'draft'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-gray-100 text-gray-800'
-                  } capitalize`}>
-                    {course.status}
-                  </span>
-                  <span className="text-xs text-muted-foreground capitalize">{course.level}</span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedCourseId(course._id)}
-                    className="flex-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                  >
-                    Assign Teacher
-                  </button>
-                  <button className="flex-1 px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90">
-                    Enroll
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))
+          <CourseTable
+            courses={courses}
+            selectedCourses={selectedCourses}
+            onSelectCourse={toggleCourseSelection}
+            onSelectAll={toggleSelectAll}
+            onView={(courseId) => router.push(`/admin/courses/${courseId}`)}
+            onEdit={(courseId) => router.push(`/admin/courses/${courseId}/edit`)}
+            onDelete={handleDeleteCourse}
+            loading={actionLoading}
+          />
         )}
       </div>
 
