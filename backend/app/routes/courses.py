@@ -73,17 +73,9 @@ def list_courses():
 @require_auth
 def get_course(course_id):
     """Get course details"""
-    
-    
-    print("Authorization Header:", request.headers.get("Authorization"))
-    print("g.user_id:", getattr(g, "user_id", None))
-    print("g.user_data:", getattr(g, "user_data", None))
     try:
         service = CourseService(current_app.db)
         course = service.get_course_by_id(course_id, include_lessons=True)
-        print("✅ Course loaded successfully")
-        print("Course Status:", course.status)
-        print("Instructor ID:", course.instructor_id)
         
         # Check if user has access to see this course
         user_id = get_current_user()
@@ -91,20 +83,14 @@ def get_course(course_id):
         user_role = user_data.get('role')
         
         # Draft courses are only visible to their instructor and admins
-        print("Current User:", user_id)
-        print("Current Role:", user_role)
         if course.status == 'draft':
-            print("Course is in draft status")
             # Check if current user is the instructor
             if user_id and user_id == str(course.instructor_id):
-                print("✅ Instructor matched")
                 pass  # Allow access
             # Check if current user is an admin
             elif user_role == UserRole.ADMIN.value:
-                print("✅ Admin matched")
                 pass  # Allow access
             else:
-                print("❌ Access denied")
                 # Not authorized to view this draft course
                 return error_response('This course is not available', 404)
         
@@ -115,29 +101,13 @@ def get_course(course_id):
         response_data["instructor_id"] = str(response_data["instructor_id"])
 
         if "lesson_ids" in response_data:
-                response_data["lesson_ids"] = [
+            response_data["lesson_ids"] = [
                 str(x) for x in response_data["lesson_ids"]
             ]
         return success_response(
             data=response_data,
             message="Course retrieved successfully"
         )
-        print("Course Data:")
-        print(course_data)
-        print("Type:", type(course_data))
-        print("✅ Course data created successfully")
-        # Add lessons if they exist
-        if hasattr(course, 'lessons'):
-            lessons = []
-            for lesson in course.lessons:
-                data = lesson.to_dict()
-                print(data)   # Print each lesson
-                lessons.append(data)
-
-            course_data['lessons'] = lessons
-            
-        
-        return success_response({'course': course_data}, 'Course retrieved successfully')
     
     except (NotFoundError, ValueError) as e:
         return error_response(str(e), 404)
@@ -385,5 +355,139 @@ def add_lesson(course_id):
     except (ValidationError, NotFoundError) as e:
         status_code = 400 if isinstance(e, ValidationError) else 404
         return error_response(str(e), status_code)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/<course_id>/bulk-enroll', methods=['POST'])
+@require_auth
+def bulk_enroll_students(course_id):
+    """Bulk enroll students in a course"""
+    try:
+        user_id = get_current_user()
+        user_data = g.user_data
+        data = request.get_json()
+        
+        if not data or 'user_ids' not in data:
+            return error_response('Missing required field: user_ids', 400)
+        
+        user_ids = data.get('user_ids', [])
+        if not isinstance(user_ids, list) or not user_ids:
+            return error_response('user_ids must be a non-empty list', 400)
+        
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        # Check authorization (only teacher or admin can bulk enroll)
+        if user_id != str(course.instructor_id) and user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('You do not have permission to enroll students in this course', 403)
+        
+        enrollments, errors = service.bulk_enroll_students(course_id, user_ids)
+        
+        enrollments_data = [enrollment.to_dict() for enrollment in enrollments]
+        
+        return success_response({
+            'enrollments': enrollments_data,
+            'errors': errors,
+            'successful': len(enrollments),
+            'failed': len(errors)
+        }, 'Bulk enrollment completed', 201)
+    
+    except (ValidationError, NotFoundError) as e:
+        status_code = 400 if isinstance(e, ValidationError) else 404
+        return error_response(str(e), status_code)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/<course_id>/bulk-unenroll', methods=['POST'])
+@require_auth
+def bulk_unenroll_students(course_id):
+    """Bulk unenroll students from a course"""
+    try:
+        user_id = get_current_user()
+        user_data = g.user_data
+        data = request.get_json()
+        
+        if not data or 'user_ids' not in data:
+            return error_response('Missing required field: user_ids', 400)
+        
+        user_ids = data.get('user_ids', [])
+        if not isinstance(user_ids, list) or not user_ids:
+            return error_response('user_ids must be a non-empty list', 400)
+        
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        # Check authorization (only teacher or admin can bulk unenroll)
+        if user_id != str(course.instructor_id) and user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('You do not have permission to unenroll students from this course', 403)
+        
+        count = service.bulk_unenroll_students(course_id, user_ids)
+        
+        return success_response({
+            'unenrolled_count': count
+        }, f'Successfully unenrolled {count} students')
+    
+    except (ValidationError, NotFoundError) as e:
+        status_code = 400 if isinstance(e, ValidationError) else 404
+        return error_response(str(e), status_code)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/teacher/<teacher_id>/courses', methods=['GET'])
+@require_auth
+def get_teacher_courses_route(teacher_id):
+    """Get all courses for a teacher"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        page_size = request.args.get('page_size', 10, type=int)
+        
+        # Validate pagination
+        if page < 1:
+            return error_response('Page must be >= 1', 400)
+        if page_size < 1 or page_size > current_app.config['MAX_PAGE_SIZE']:
+            return error_response(f'Page size must be between 1 and {current_app.config["MAX_PAGE_SIZE"]}', 400)
+        
+        service = CourseService(current_app.db)
+        courses, total = service.get_teacher_courses(teacher_id, page, page_size)
+        
+        courses_data = []
+        for course in courses:
+            data = course.to_dict()
+            data["_id"] = str(data["_id"])
+            data["instructor_id"] = str(data["instructor_id"])
+            courses_data.append(data)
+        
+        return paginated_response(courses_data, total, page, page_size, 'Teacher courses retrieved successfully')
+    
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@bp.route('/<course_id>/enrolled-students-details', methods=['GET'])
+@require_auth
+def get_enrolled_students_details(course_id):
+    """Get enrolled students with detailed user information"""
+    try:
+        user_id = get_current_user()
+        user_data = g.user_data
+        page = request.args.get('page', 1, type=int)
+        page_size = request.args.get('page_size', 10, type=int)
+        
+        service = CourseService(current_app.db)
+        course = service.get_course_by_id(course_id)
+        
+        # Check authorization (teacher or admin of the course)
+        if user_id != str(course.instructor_id) and user_data.get('role') != UserRole.ADMIN.value:
+            return error_response('You do not have permission to view this', 403)
+        
+        results, total = service.get_enrolled_students_with_details(course_id, page, page_size)
+        
+        return paginated_response(results, total, page, page_size, 'Enrolled students with details retrieved successfully')
+    
+    except NotFoundError as e:
+        return error_response(str(e), 404)
     except Exception as e:
         return error_response(str(e), 500)

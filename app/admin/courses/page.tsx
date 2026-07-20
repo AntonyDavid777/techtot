@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
-import { Course } from '@/types'
+import { Course, User } from '@/types'
 
 export default function AdminCoursesPage() {
   const [courses, setCourses] = useState<Course[]>([])
@@ -12,9 +12,14 @@ export default function AdminCoursesPage() {
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [teachers, setTeachers] = useState<User[]>([])
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>('')
+  const [isAssigningTeacher, setIsAssigningTeacher] = useState(false)
 
   useEffect(() => {
     loadCourses()
+    loadTeachers()
   }, [page, search, statusFilter])
 
   const loadCourses = async () => {
@@ -33,6 +38,31 @@ export default function AdminCoursesPage() {
       console.error('[v0] Error loading courses:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadTeachers = async () => {
+    try {
+      const response = await apiClient.listUsers(1, 100, 'teacher') as any
+      setTeachers(response.data || [])
+    } catch (err: any) {
+      console.error('[v0] Error loading teachers:', err)
+    }
+  }
+
+  const handleAssignTeacher = async () => {
+    if (!selectedCourseId || !selectedTeacherId) return
+    
+    try {
+      setIsAssigningTeacher(true)
+      await apiClient.updateCourse(selectedCourseId, { instructor_id: selectedTeacherId })
+      setSelectedCourseId(null)
+      setSelectedTeacherId('')
+      loadCourses()
+    } catch (err: any) {
+      console.error('[v0] Error assigning teacher:', err)
+    } finally {
+      setIsAssigningTeacher(false)
     }
   }
 
@@ -67,6 +97,42 @@ export default function AdminCoursesPage() {
         <h1 className="text-3xl font-bold">Course Management</h1>
         <p className="text-muted-foreground">Manage all courses in the system</p>
       </div>
+
+      {/* Teacher Assignment Modal */}
+      {selectedCourseId && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4 space-y-4">
+            <h2 className="text-xl font-bold">Assign Teacher</h2>
+            <select
+              value={selectedTeacherId}
+              onChange={(e) => setSelectedTeacherId(e.target.value)}
+              className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Select a teacher...</option>
+              {teachers.map((teacher) => (
+                <option key={teacher._id} value={teacher._id}>
+                  {teacher.name} ({teacher.email})
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setSelectedCourseId(null)}
+                className="px-4 py-2 border border-border rounded hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAssignTeacher}
+                disabled={!selectedTeacherId || isAssigningTeacher}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50"
+              >
+                {isAssigningTeacher ? 'Assigning...' : 'Assign'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-card border border-border rounded-lg p-4 space-y-4">
@@ -141,11 +207,14 @@ export default function AdminCoursesPage() {
                   <span className="text-xs text-muted-foreground capitalize">{course.level}</span>
                 </div>
                 <div className="flex gap-2">
-                  <button className="flex-1 px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90">
-                    Edit
+                  <button
+                    onClick={() => setSelectedCourseId(course._id)}
+                    className="flex-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Assign Teacher
                   </button>
-                  <button className="flex-1 px-3 py-1 text-sm border border-border rounded hover:bg-muted">
-                    View
+                  <button className="flex-1 px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90">
+                    Enroll
                   </button>
                 </div>
               </div>
