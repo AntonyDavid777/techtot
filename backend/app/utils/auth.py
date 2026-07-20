@@ -71,17 +71,14 @@ def verify_token(token: str, token_type: str = 'access'):
             Config.JWT_SECRET_KEY,
             algorithms=['HS256']
         )
-        print("Decoded Payload:", payload)
         
         if payload.get('type') != token_type:
             raise AuthenticationError('Invalid token type')
         
         return payload
     except jwt.ExpiredSignatureError:
-        print("JWT Error: Token expired")     
         raise AuthenticationError('Token has expired')
-    except jwt.InvalidTokenError:
-        print("JWT InvalidTokenError:", repr(e))
+    except jwt.InvalidTokenError as e:
         raise AuthenticationError('Invalid token')
 
 
@@ -107,13 +104,10 @@ def require_auth(f):
     def decorated_function(*args, **kwargs):
         try:
             token = get_token_from_request()
-            print("token :",token)
             payload = verify_token(token, token_type='access')
-            print("payload :",payload)
             g.user_id = payload.get('user_id')
             g.user_data = payload
         except AuthenticationError as e:
-            print("Authentication Error:", repr(e))
             return {'success': False, 'error': str(e)}, 401
         
         return f(*args, **kwargs)

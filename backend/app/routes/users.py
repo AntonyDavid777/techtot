@@ -67,12 +67,8 @@ def get_user(user_id):
 @bp.route('/<user_id>', methods=['PUT'])
 @require_auth
 def update_user(user_id):
-    print("✅ update_user route called")
-    print("User ID:", user_id)
     """Update user information"""
     try:
-        print("Authorization:", request.headers.get("Authorization"))
-        print("Current User:", get_current_user())
         current_user_id = get_current_user()
         data = request.get_json()
         
