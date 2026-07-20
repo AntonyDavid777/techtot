@@ -142,8 +142,12 @@ def get_current_user_info():
         user_id = get_current_user()
         db = current_app.db
         
+<<<<<<< HEAD
         # user_id is already a string from JWT payload
         user_doc = db.users.find_one({'_id': user_id})
+=======
+        user_doc = db.users.find_one({'_id': ObjectId(user_id)})
+>>>>>>> 99a67112b7f9167d6adf8bca3d1e08d08fc35171
         
         if not user_doc:
             return error_response('User not found', 404)
@@ -169,14 +173,23 @@ def refresh_token():
         
         from app.utils.auth import verify_token, generate_tokens
         
+<<<<<<< HEAD
         refresh_token_str = data.get('refresh_token')
         payload = verify_token(refresh_token_str, token_type='refresh')
+=======
+        refresh_token = data.get('refresh_token')
+        payload = verify_token(refresh_token, token_type='refresh')
+>>>>>>> 99a67112b7f9167d6adf8bca3d1e08d08fc35171
         
         user_id = payload.get('user_id')
         db = current_app.db
         
+<<<<<<< HEAD
         # user_id is already a string
         user_doc = db.users.find_one({'_id': user_id})
+=======
+        user_doc = db.users.find_one({'_id': ObjectId(user_id)})
+>>>>>>> 99a67112b7f9167d6adf8bca3d1e08d08fc35171
         if not user_doc:
             return error_response('User not found', 404)
         
